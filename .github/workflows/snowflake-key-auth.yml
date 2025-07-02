@@ -1,0 +1,60 @@
+name: Snowflake Key Pair Auth
+
+on:
+  workflow_dispatch:
+
+jobs:
+  snowflake-job:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.10
+
+      - name: Install dependencies
+        run: pip install snowflake-connector-python cryptography
+
+      - name: Query Snowflake with Key Pair
+        env:
+          SF_ACCOUNT: ${{ secrets.SF_ACCOUNT }}
+          SF_USER: ${{ secrets.SF_USER }}
+          SF_ROLE: ${{ secrets.SF_ROLE }}
+          SF_DATABASE: ${{ secrets.SF_DATABASE }}
+          SF_SCHEMA: ${{ secrets.SF_SCHEMA }}
+          SF_WAREHOUSE: ${{ secrets.SF_WAREHOUSE }}
+          SF_PRIVATE_KEY: ${{ secrets.SF_PRIVATE_KEY }}
+        run: |
+          python <<EOF
+          import os
+          import snowflake.connector
+          from cryptography.hazmat.primitives import serialization
+          from cryptography.hazmat.backends import default_backend
+
+          p_key = os.environ['SF_PRIVATE_KEY'].replace('\\n', '\n').encode()
+          private_key = serialization.load_pem_private_key(
+              p_key,
+              password=None,
+              backend=default_backend()
+          )
+
+          conn = snowflake.connector.connect(
+              user=os.environ['SF_USER'],
+              account=os.environ['SF_ACCOUNT'],
+              private_key=private_key,
+              role=os.environ['SF_ROLE'],
+              warehouse=os.environ['SF_WAREHOUSE'],
+              database=os.environ['SF_DATABASE'],
+              schema=os.environ['SF_SCHEMA'],
+          )
+
+          cur = conn.cursor()
+          cur.execute("SELECT CURRENT_VERSION()")
+          print("Snowflake Version:", cur.fetchone()[0])
+          cur.close()
+          conn.close()
+          EOF
